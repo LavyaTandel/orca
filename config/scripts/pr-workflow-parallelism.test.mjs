@@ -55,18 +55,25 @@ describe('PR workflow parallelism', () => {
     }
   })
 
-  it('runs real-zsh coverage once outside the general shards', () => {
+  it('runs real-shell coverage once outside the general shards', () => {
     const shellStep = workflow.jobs.shell_contracts.steps.find(
       (step) => step.name === 'Test real shell contracts'
     )
     const shellInstall = workflow.jobs.shell_contracts.steps.find(
       (step) => step.uses === './.github/actions/install-node-dependencies'
     )
+    // Why matched on the command, not the step name: the name changes as shells are
+    // added, and the invariant is which lane installs them.
+    const isShellInstall = (step) => step.run?.includes('apt-get install') ?? false
+    const shellPackages = workflow.jobs.shell_contracts.steps.find(isShellInstall)
 
-    expect(workflow.jobs.test.steps.some((step) => step.name === 'Install zsh')).toBe(false)
-    expect(workflow.jobs.shell_contracts.steps.some((step) => step.name === 'Install zsh')).toBe(
-      true
-    )
+    expect(workflow.jobs.test.steps.some(isShellInstall)).toBe(false)
+    expect(shellPackages).toBeDefined()
+    // Why each shell is asserted: the live tests skip themselves when the binary is
+    // missing, so a dropped package silently empties this lane instead of failing it.
+    for (const shell of ['zsh', 'fish']) {
+      expect(shellPackages.run).toContain(shell)
+    }
     expect(shellInstall.with['native-runtime']).toBe('node')
     for (const testFile of nativeShellContractFiles) {
       expect(shellStep.run).toContain(testFile)
