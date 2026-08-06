@@ -224,6 +224,7 @@ import { resolveLocalProjectRuntimeForWorktreeId } from '../local-project-runtim
 import { isPtyIncarnationId } from '../../shared/pty-incarnation'
 import type { PtyListedSession } from '../../shared/pty-listed-session'
 import { handleLocalPtyRendererLoad } from './local-pty-renderer-load'
+import type { RendererLoadKind } from '../window/recovery-reload-intent'
 
 // ─── Provider Registry ──────────────────────────────────────────────
 // Routes PTY operations by connectionId (null = local provider).
@@ -2183,7 +2184,10 @@ function clearRendererLifecycleResetHandlers(): void {
   rendererDidStartNavigationHandler = null
 }
 
-function registerRendererLifecycleResetHandlers(webContents: WebContents): void {
+function registerRendererLifecycleResetHandlers(
+  webContents: WebContents,
+  noteRendererNavigationStarted?: (webContentsId: number) => void
+): void {
   clearRendererLifecycleResetHandlers()
   markRendererPtysHiddenForRendererLifecycleReset()
   rendererLifecycleResetWebContents = webContents
@@ -2192,6 +2196,7 @@ function registerRendererLifecycleResetHandlers(webContents: WebContents): void 
     if (!details.isMainFrame || details.isSameDocument) {
       return
     }
+    noteRendererNavigationStarted?.(webContents.id)
     markRendererPtysHiddenForRendererLifecycleReset()
   }
   webContents.on('did-start-navigation', rendererDidStartNavigationHandler)
@@ -2241,8 +2246,8 @@ export function registerPtyHandlers(
     prepareCodexSessionResume?: PrepareCodexSessionResume
     awaitLocalPtyStartup?: () => Promise<void>
     awaitLocalPtyProviderStartup?: () => Promise<void>
-    // Why: returns true once for the crash-recovery reload so its did-finish-load skips the orphan sweep and keeps live PTYs (#5787).
-    isRecoveryReloadInFlight?: (webContentsId: number) => boolean
+    noteRendererNavigationStarted?: (webContentsId: number) => void
+    classifyRendererLoad?: (webContentsId: number) => RendererLoadKind
   }
 ): void {
   // Why: a re-registration means a new window owns delivery — cancel the prior closure's watchdog and neutralize its bridged reset so mark-hidden below can't arm a timer against the dead closure.
@@ -2250,7 +2255,10 @@ export function registerPtyHandlers(
   resetRendererDeliveryAccountingForLifecycleReset = () => {}
   invalidatePendingPtyDrainPriority = () => {}
   invalidatePendingPtyDrainPolicy = () => {}
-  registerRendererLifecycleResetHandlers(mainWindow.webContents)
+  registerRendererLifecycleResetHandlers(
+    mainWindow.webContents,
+    options?.noteRendererNavigationStarted
+  )
 
   const getLocalPtyStartupPromise = (connectionId?: string | null): Promise<void> | undefined => {
     if (connectionId) {
@@ -4027,7 +4035,7 @@ export function registerPtyHandlers(
     const lp = localProvider
     didFinishLoadHandler = () => {
       // Why: the retained provider onExit callback is the only physical-exit proof; it clears ownership after the OS reaps it.
-      handleLocalPtyRendererLoad(lp, mainWindow.webContents.id, options?.isRecoveryReloadInFlight)
+      handleLocalPtyRendererLoad(lp, mainWindow.webContents.id, options?.classifyRendererLoad)
     }
     didFinishLoadWebContents = mainWindow.webContents
     mainWindow.webContents.on('did-finish-load', didFinishLoadHandler)
