@@ -1072,6 +1072,7 @@ function finishPtyShutdown(
 
 export type BuildPtyHostEnvOptions = {
   isPackaged: boolean
+  resourcesPath?: string
   userDataPath: string
   selectedCodexHomePath: string | null
   skipCodexHomeEnv?: boolean
@@ -1771,6 +1772,16 @@ export function buildPtyHostEnv(
         .filter((entry) => entry.length > 0 && entry !== shimDir)
       baseEnv.PATH = [shimDir, ...inheritedEntries].join(delimiter)
     }
+  } else if (
+    opts.resourcesPath &&
+    (process.platform === 'darwin' || process.platform === 'win32')
+  ) {
+    // Why: global CLI registration is optional, but agents in Orca-managed PTYs must always reach this app's bundled CLI.
+    const bundledCliBin = join(opts.resourcesPath, 'bin')
+    const inheritedPath = readInheritedPath(baseEnv)
+    baseEnv[resolvePathEnvKey(baseEnv, process.platform)] = inheritedPath
+      ? `${bundledCliBin}${delimiter}${inheritedPath}`
+      : bundledCliBin
   }
 
   // Why: PATH shims keep GitHub attribution scoped to Orca's own PTYs without rewriting user git config.
@@ -2323,6 +2334,7 @@ export function registerPtyHandlers(
         const skipCodexHomeEnv = ctx?.isWsl === true && !selectedCodexHomePath
         const env = buildPtyHostEnv(id, baseEnv, {
           isPackaged: app.isPackaged,
+          resourcesPath: process.resourcesPath,
           userDataPath: app.getPath('userData'),
           selectedCodexHomePath,
           skipCodexHomeEnv,
@@ -4516,6 +4528,7 @@ export function registerPtyHandlers(
         }
         env = buildPtyHostEnv(sessionId, env ?? {}, {
           isPackaged: app.isPackaged,
+          resourcesPath: process.resourcesPath,
           userDataPath: app.getPath('userData'),
           selectedCodexHomePath,
           skipCodexHomeEnv,
@@ -5987,6 +6000,7 @@ export function registerPtyHandlers(
           try {
             buildPtyHostEnv(sessionIdForEnv, env, {
               isPackaged: app.isPackaged,
+              resourcesPath: process.resourcesPath,
               userDataPath: app.getPath('userData'),
               selectedCodexHomePath,
               skipCodexHomeEnv,
