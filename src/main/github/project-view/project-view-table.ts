@@ -160,22 +160,28 @@ export async function getProjectViewTable(
     }
   }
 
-  // Fallback: when the search index is stale, an indexed query can return 0
-  // items while an unfiltered query would succeed. Retry once without the
-  // query so the Projects tab shows real data instead of the empty state
-  // (#12648).
+  // Fallback: #12648 is about unfiltered views. Orca still sends query:"" for
+  // those, which routes through GitHub's lagging search index. Retry once with
+  // the query argument omitted so a populated board does not render as empty.
   let rows = items.rows
   let totalCount = items.totalCount
   let parentFieldDropped = items.parentFieldDropped
-  if (totalCount === 0 && rows.length === 0 && effectiveQuery) {
+  if (totalCount === 0 && rows.length === 0 && !effectiveQuery) {
     const unfiltered = await fetchAllItems({
       owner: args.owner,
       ownerType: args.ownerType,
       projectNumber: args.projectNumber,
-      query: '',
+      query: null,
       host: args.host
     })
-    if (unfiltered.ok && unfiltered.rows.length > 0) {
+    if (!unfiltered.ok) {
+      return {
+        ok: false,
+        error: unfiltered.error,
+        ...(typeof unfiltered.totalCount === 'number' ? { totalCount: unfiltered.totalCount } : {})
+      }
+    }
+    if (unfiltered.rows.length > 0) {
       rows = unfiltered.rows
       totalCount = unfiltered.totalCount
       parentFieldDropped = unfiltered.parentFieldDropped
@@ -195,7 +201,7 @@ export async function getProjectViewTable(
     selectedView,
     rows,
     totalCount,
-    parentFieldDropped,
+    parentFieldDropped
   }
   return { ok: true, data: table }
 }

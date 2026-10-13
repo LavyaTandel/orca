@@ -132,7 +132,9 @@ describe('project view layout selection', () => {
   })
 
   it('does not fall back for filtered views with zero matches', async () => {
-    vi.mocked(fetchProjectViewsPage).mockResolvedValue(page([view('table', 'TABLE_LAYOUT', 'status:open')]))
+    vi.mocked(fetchProjectViewsPage).mockResolvedValue(
+      page([view('table', 'TABLE_LAYOUT', 'status:open')])
+    )
     const result = await getProjectViewTable({ ...args, viewId: 'table' })
     expect(result).toMatchObject({ ok: true, data: { rows: [], totalCount: 0 } })
     expect(fetchAllItems).toHaveBeenCalledTimes(1)
